@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>英語フレーズ 5択クイズ（音声つき）- Library</title>
+  <style>
+    :root { --bd:#ddd; --muted:#666; --bg:#fafafa; }
+    body { font-family: system-ui,-apple-system,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif; margin: 18px; }
+    .wrap { max-width: 860px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 10px; }
+    .card { border:1px solid var(--bd); border-radius: 12px; padding: 14px; background: white; position: relative; overflow: hidden; }
+    .row { display:flex; gap:10px; flex-wrap: wrap; align-items:center; }
+    .qtext { font-size: 26px; font-weight: 700; letter-spacing: .2px; line-height: 1.25; }
+    .muted { color: var(--muted); font-size: 13px; }
+    button { border:1px solid var(--bd); background: var(--bg); padding: 10px 12px; border-radius: 10px; cursor:pointer; }
+    button:hover { background: #f0f0f0; }
+    button:disabled { cursor:not-allowed; opacity:.65; }
+    .choices { display:grid; gap:10px; margin-top: 12px; }
+    .choice {
+      text-align: left; padding: 12px; background: #fff;
+      border: 1px solid var(--bd); border-radius: 12px; cursor: pointer;
+      font-size: 16px;
+    }
+    .choice.correct { border-color: #3bb54a; }
+    .choice.wrong   { border-color: #e13d3d; }
+    .pill { border:1px solid var(--bd); border-radius: 999px; padding: 6px 10px; background: #fff; font-size: 13px; }
+    .small { font-size: 13px; }
+    .hr { height:1px; background: var(--bd); margin: 12px 0; }
+    select, input[type="checkbox"] { cursor:pointer; }
+    .warn { color:#b45309; }
+    .modeRow { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .modeRow select { padding: 8px 10px; border-radius: 10px; border:1px solid var(--bd); background:#fff; }
+    .kbd { font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size: 12px; background:#f5f5f5; border:1px solid var(--bd); padding:2px 6px; border-radius: 6px; }
+    .toast { font-size: 14px; color: var(--muted); margin-top: 8px; }
+
+    /* End screen */
+    .endBox { padding: 10px 0; }
+    .bigEmoji { font-size: 64px; line-height: 1; margin: 6px 0 2px; }
+    .endTitle { font-size: 22px; font-weight: 800; margin: 6px 0; }
+    .endMeta { color: var(--muted); margin: 4px 0 12px; }
+    .tryAgain { font-weight: 800; color: #b91c1c; }
+
+    /* Confetti canvas */
+    canvas#confetti {
+      position:absolute; inset:0; width:100%; height:100%;
+      pointer-events:none; display:none;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>英語フレーズ 5択クイズ（音声つき）- Library</h1>
+
+  <div class="card" id="card">
+    <canvas id="confetti"></canvas>
+
+    <div class="row" style="justify-content:space-between;">
+      <div class="pill" id="progress">Q 1 / 10</div>
+      <div class="pill" id="score">Score: 0</div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="modeRow">
+      <span class="small muted">出題モード:</span>
+      <select id="modeSelect" aria-label="mode">
+        <option value="EN2JA" selected>英語 → 日本語（英語を見て意味を選ぶ）</option>
+        <option value="JA2EN">日本語 → 英語（日本語を見て英語を選ぶ）</option>
+      </select>
+      <span class="small muted">※ 音声はいつも英語です（ボタン or 自動）</span>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="row" style="justify-content:space-between;">
+      <div>
+        <div class="qtext" id="qText">I want to go to the library.</div>
+        <div class="muted" id="hintText">（「🔊 音声」で英語を読み上げ）</div>
+        <div class="toast" id="toast"></div>
+      </div>
+
+      <div class="row">
+        <button id="speakBtn" type="button">🔊 音声</button>
+        <button id="repeatBtn" type="button">↻ 同じ問題</button>
+        <button id="nextBtn" type="button" disabled>→ 次へ</button>
+      </div>
+    </div>
+
+    <div class="choices" id="choices"></div>
+
+    <div class="hr"></div>
+
+    <div class="row">
+      <span class="small muted">音声:</span>
+      <select id="voiceSelect"></select>
+
+      <label class="small">
+        <input type="checkbox" id="autoSpeak" />
+        自動で音声（毎問）
+      </label>
+
+      <label class="small">
+        速度
+        <select id="rateSelect">
+          <option value="0.85">ゆっくり</option>
+          <option value="1.0" selected>ふつう</option>
+          <option value="1.15">はやめ</option>
+        </select>
+      </label>
+
+      <span class="small muted" id="voiceNote"></span>
+    </div>
+
+    <div class="muted" style="margin-top:10px;">
+      コツ：<span class="kbd">自動で音声</span> をONにするとテンポよく回せます。<span class="kbd">次へ</span> は解答後に押せます。
+    </div>
+  </div>
+</div>
+
+<script>
+/** ① データ（英語 × 日本語）
+ *  - カジュアル / 標準 / 丁寧 を入れました
+ *  - 合計10問
+ */
+const ITEMS = [
+  // I want to (casual / standard / polite)
+  { en: "I wanna go to the library.",               ja: "わたしは図書館に行きたい。（カジュアル）" },
+  { en: "I want to go to the library.",             ja: "わたしは図書館に行きたい。（標準）" },
+  { en: "I'd like to go to the library.",           ja: "わたしは図書館に行きたいです。（丁寧語）" },
+
+  // I like / have to
+  { en: "I like going to the library.",             ja: "わたしは図書館に行くのが好きです。" },
+  { en: "I have to go to the library.",             ja: "わたしは図書館に行かなければなりません。" },
+
+  // Do you want to (casual / standard / polite)
+  { en: "Do you wanna go to the library?",          ja: "あなたは、図書館に行きたい？（カジュアル）" },
+  { en: "Do you want to go to the library?",        ja: "あなたは、図書館に行きたいですか？（標準）" },
+  { en: "Would you like to go to the library?",     ja: "あなたは、図書館に行きたいですか？（丁寧語）" },
+
+  // Do you like / have to
+  { en: "Do you like going to the library?",        ja: "あなたは、図書館に行くのが好きですか？" },
+  { en: "Do you have to go to the library?",        ja: "あなたは、図書館に行かなければなりませんか？" },
+];
+
+const CHOICES_COUNT = 5;
+
+let order = [];
+let idx = 0;
+let score = 0;
+let wrong = 0;
+let locked = false;
+let answeredThisQ = false;
+
+const $ = (id) => document.getElementById(id);
+const qText = $("qText");
+const choicesEl = $("choices");
+const progressEl = $("progress");
+const scoreEl = $("score");
+const speakBtn = $("speakBtn");
+const nextBtn = $("nextBtn");
+const repeatBtn = $("repeatBtn");
+const voiceSelect = $("voiceSelect");
+const voiceNote = $("voiceNote");
+const autoSpeak = $("autoSpeak");
+const rateSelect = $("rateSelect");
+const modeSelect = $("modeSelect");
+const toast = $("toast");
+const confettiCanvas = $("confetti");
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function init() {
+  order = shuffle([...Array(ITEMS.length).keys()]);
+  idx = 0;
+  score = 0;
+  wrong = 0;
+  locked = false;
+  answeredThisQ = false;
+  updateScore();
+  hideConfetti();
+  loadQuestion();
+}
+
+function updateScore() {
+  scoreEl.textContent = `Score: ${score}`;
+}
+
+function currentItem() {
+  return ITEMS[order[idx]];
+}
+
+function setProgress() {
+  progressEl.textContent = `Q ${idx + 1} / ${ITEMS.length}`;
+}
+
+function clearChoices() {
+  choicesEl.innerHTML = "";
+}
+
+function buildChoices(correct, pool) {
+  const others = pool.filter(x => x !== correct);
+  const distractors = shuffle(others).slice(0, CHOICES_COUNT - 1);
+  return shuffle([correct, ...distractors]);
+}
+
+function mode() {
+  return modeSelect.value; // EN2JA or JA2EN
+}
+
+function setToast(msg) {
+  toast.textContent = msg || "";
+}
+
+function loadQuestion() {
+  locked = false;
+  answeredThisQ = false;
+  nextBtn.disabled = true;
+  setToast("");
+  clearChoices();
+  setProgress();
+  hideConfetti();
+
+  const item = currentItem();
+
+  const isEN2JA = (mode() === "EN2JA");
+  qText.textContent = isEN2JA ? item.en : item.ja;
+
+  const correct = isEN2JA ? item.ja : item.en;
+  const pool = isEN2JA ? ITEMS.map(x => x.ja) : ITEMS.map(x => x.en);
+  const options = buildChoices(correct, pool);
+
+  options.forEach(opt => {
+    const btn = document.createElement("button");
+    btn.className = "choice";
+    btn.type = "button";
+    btn.textContent = opt;
+    btn.addEventListener("click", () => onAnswer(btn, opt === correct));
+    choicesEl.appendChild(btn);
+  });
+
+  if (autoSpeak.checked) speak(item.en);
+}
+
+function onAnswer(btn, isCorrect) {
+  if (locked) return;
+  locked = true;
+  answeredThisQ = true;
+  nextBtn.disabled = false;
+
+  const item = currentItem();
+  const isEN2JA = (mode() === "EN2JA");
+  const correctText = isEN2JA ? item.ja : item.en;
+
+  const all = [...choicesEl.querySelectorAll("button.choice")];
+  all.forEach(b => {
+    b.disabled = true;
+    if (b.textContent === correctText) b.classList.add("correct");
+  });
+
+  if (isCorrect) {
+    score += 1;
+    updateScore();
+    setToast("✅ Correct!");
+  } else {
+    wrong += 1;
+    btn.classList.add("wrong");
+    setToast("❌ Wrong…（正解が緑です）");
+  }
+}
+
+function next() {
+  if (!answeredThisQ) return; // safety
+  idx += 1;
+  if (idx >= ITEMS.length) {
+    showEndScreen();
+    return;
+  }
+  loadQuestion();
+}
+
+function repeat() {
+  loadQuestion();
+}
+
+nextBtn.addEventListener("click", next);
+repeatBtn.addEventListener("click", repeat);
+speakBtn.addEventListener("click", () => speak(currentItem().en));
+modeSelect.addEventListener("change", () => loadQuestion());
+
+/** ② 音声（Web Speech API） */
+function speak(text) {
+  try {
+    if (!("speechSynthesis" in window)) {
+      voiceNote.textContent = "このブラウザは音声読み上げに未対応です。";
+      voiceNote.className = "small warn";
+      return;
+    }
+    window.speechSynthesis.cancel();
+
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "en-US";
+    u.rate = Number(rateSelect.value);
+
+    const v = getSelectedVoice();
+    if (v) u.voice = v;
+
+    window.speechSynthesis.speak(u);
+  } catch (e) {
+    voiceNote.textContent = "音声の再生でエラーが出ました。";
+    voiceNote.className = "small warn";
+  }
+}
+
+function getSelectedVoice() {
+  const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+  const name = voiceSelect.value;
+  return voices.find(v => v.name === name) || null;
+}
+
+function loadVoices() {
+  if (!("speechSynthesis" in window)) return;
+
+  const voices = window.speechSynthesis.getVoices();
+  voiceSelect.innerHTML = "";
+
+  const enVoices = voices.filter(v => (v.lang || "").toLowerCase().startsWith("en"));
+  const list = enVoices.length ? enVoices : voices;
+
+  list.forEach(v => {
+    const opt = document.createElement("option");
+    opt.value = v.name;
+    opt.textContent = `${v.name} (${v.lang})`;
+    voiceSelect.appendChild(opt);
+  });
+
+  voiceNote.className = "small " + (enVoices.length ? "muted" : "warn");
+  voiceNote.textContent = enVoices.length
+    ? "英語音声が見つかりました。"
+    : "英語音声が見つかりません（他言語音声になる可能性あり）。";
+}
+
+if ("speechSynthesis" in window) {
+  loadVoices();
+  window.speechSynthesis.onvoiceschanged = loadVoices;
+}
+
+/** ③ 終了演出：判定（全問正解 / 1〜3ミス / 4ミス以上）
+ *  - 全問正解: クラッカー(紙吹雪) + おめでとう音 + 😄
+ *  - 1〜3ミス: 😐（音/紙吹雪なし）
+ *  - 4ミス以上: 😭 + TRY AGAIN
+ */
+function showEndScreen() {
+  const total = ITEMS.length;
+  const miss = wrong; // already counted
+  progressEl.textContent = `Q ${total} / ${total}`;
+
+  clearChoices();
+
+  const box = document.createElement("div");
+  box.className = "endBox";
+
+  let emoji = "😐";
+  let title = "Finish!";
+  let note = `スコア: ${score} / ${total}（ミス: ${miss}）`;
+  let extra = "";
+
+  if (miss === 0) {
+    emoji = "😄";
+    title = "おめでとう！ Perfect!";
+    extra = "<div class='muted'>クラッカー！🎉</div>";
+    showConfetti();
+    playCongratsSound(); // user just clicked next, so it's user-gesture
+  } else if (miss >= 4) {
+    emoji = "😭";
+    title = "TRY AGAIN";
+    extra = "<div class='tryAgain'>もう一回やってみよう！</div>";
+  } else {
+    emoji = "😐";
+    title = "Good job!";
+    extra = "<div class='muted'>あと少し！</div>";
+  }
+
+  box.innerHTML = `
+    <div class="bigEmoji">${emoji}</div>
+    <div class="endTitle">${title}</div>
+    <div class="endMeta">${note}</div>
+    ${extra}
+    <div style="margin-top:12px;">
+      <button id="restartBtn" type="button">最初から</button>
+    </div>
+  `;
+
+  choicesEl.appendChild(box);
+
+  $("restartBtn").addEventListener("click", () => {
+    // stop visuals/sound
+    hideConfetti();
+    init();
+  });
+
+  // disable next
+  nextBtn.disabled = true;
+  setToast("");
+}
+
+/** Confetti (simple) */
+let confettiAnim = null;
+let confettiParticles = [];
+
+function resizeConfetti() {
+  const rect = confettiCanvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  confettiCanvas.width = Math.floor(rect.width * dpr);
+  confettiCanvas.height = Math.floor(rect.height * dpr);
+}
+
+function showConfetti() {
+  confettiCanvas.style.display = "block";
+  resizeConfetti();
+
+  const dpr = window.devicePixelRatio || 1;
+  const w = confettiCanvas.width;
+  const h = confettiCanvas.height;
+  const ctx = confettiCanvas.getContext("2d");
+
+  confettiParticles = [];
+  const count = 180;
+
+  for (let i = 0; i < count; i++) {
+    confettiParticles.push({
+      x: Math.random() * w,
+      y: -Math.random() * h * 0.2,
+      vx: (Math.random() - 0.5) * 2.2 * dpr,
+      vy: (Math.random() * 2.5 + 2.5) * dpr,
+      w: (Math.random() * 8 + 6) * dpr,
+      h: (Math.random() * 6 + 4) * dpr,
+      a: Math.random() * Math.PI,
+      va: (Math.random() - 0.5) * 0.2,
+      life: Math.random() * 80 + 80
+    });
+  }
+
+  const draw = () => {
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalAlpha = 0.95;
+
+    confettiParticles.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.a += p.va;
+      p.life -= 1;
+
+      // wrap
+      if (p.x < -50*dpr) p.x = w + 50*dpr;
+      if (p.x > w + 50*dpr) p.x = -50*dpr;
+
+      // random color (no fixed palette)
+      const r = Math.floor(100 + Math.random() * 155);
+      const g = Math.floor(100 + Math.random() * 155);
+      const b = Math.floor(100 + Math.random() * 155);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.a);
+      ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+      ctx.restore();
+    });
+
+    confettiParticles = confettiParticles.filter(p => p.life > 0 && p.y < h + 40*dpr);
+
+    if (confettiParticles.length > 0) {
+      confettiAnim = requestAnimationFrame(draw);
+    } else {
+      hideConfetti();
+    }
+  };
+
+  if (confettiAnim) cancelAnimationFrame(confettiAnim);
+  confettiAnim = requestAnimationFrame(draw);
+
+  window.addEventListener("resize", () => {
+    if (confettiCanvas.style.display === "block") resizeConfetti();
+  }, { once: true });
+}
+
+function hideConfetti() {
+  if (confettiAnim) cancelAnimationFrame(confettiAnim);
+  confettiAnim = null;
+  confettiParticles = [];
+  const ctx = confettiCanvas.getContext("2d");
+  if (ctx) ctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+  confettiCanvas.style.display = "none";
+}
+
+/** Congrats sound (Web Audio API) */
+function playCongratsSound() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+
+    const now = ctx.currentTime;
+
+    // simple 3-note "ta-da" chord-ish
+    const notes = [
+      { f: 523.25, t: 0.00, d: 0.12 }, // C5
+      { f: 659.25, t: 0.02, d: 0.14 }, // E5
+      { f: 783.99, t: 0.04, d: 0.18 }, // G5
+      { f: 1046.5, t: 0.22, d: 0.22 }, // C6
+    ];
+
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.exponentialRampToValueAtTime(0.22, now + 0.03);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 0.8);
+    master.connect(ctx.destination);
+
+    notes.forEach(n => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(n.f, now + n.t);
+      gain.gain.setValueAtTime(0.0001, now + n.t);
+      gain.gain.exponentialRampToValueAtTime(0.7, now + n.t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + n.t + n.d);
+      osc.connect(gain);
+      gain.connect(master);
+      osc.start(now + n.t);
+      osc.stop(now + n.t + n.d + 0.02);
+    });
+
+    // close a bit later
+    setTimeout(() => ctx.close && ctx.close(), 900);
+  } catch (e) {
+    // ignore
+  }
+}
+
+init();
+</script>
+</body>
+</html>
